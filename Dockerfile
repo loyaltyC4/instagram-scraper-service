@@ -1,4 +1,4 @@
-# Dockerfile for Railway deployment
+# Dockerfile for Railway/Hetzner deployment
 FROM mcr.microsoft.com/playwright:v1.44.0-jammy
 
 WORKDIR /app
@@ -7,10 +7,14 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install
 
-# Install CloakBrowser Chromium — kill background auto-updater and wipe download cache
+# Set CloakBrowser cache to a shared location (not /root which is 700)
+ENV CLOAKBROWSER_CACHE_DIR=/opt/cloakbrowser
+ENV CLOAKBROWSER_AUTO_UPDATE=false
+
+# Install CloakBrowser binary and make readable by all users
 RUN npx cloakbrowser install && \
-    pkill -f cloakbrowser 2>/dev/null || true && \
-    rm -rf /root/.cloakbrowser/*.tar.gz /root/.cloakbrowser/updates /tmp/* 2>/dev/null || true
+    chmod -R 755 /opt/cloakbrowser && \
+    rm -rf /opt/cloakbrowser/*.tar.gz /opt/cloakbrowser/updates /tmp/* 2>/dev/null || true
 
 # Copy source
 COPY src/ ./src/
@@ -19,7 +23,7 @@ COPY src/ ./src/
 RUN mkdir -p .sessions/instagram
 
 # Non-root user for security
-RUN groupadd -r scraper && useradd -r -g scraper scraper
+RUN groupadd -r scraper && useradd -r -g scraper -m scraper
 RUN chown -R scraper:scraper /app
 USER scraper
 
