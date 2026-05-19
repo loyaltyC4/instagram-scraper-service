@@ -1,0 +1,19 @@
+{
+  "name": "instagram-scraper-service",
+  "version": "1.0.0",
+  "description": "Stealth Instagram scraper using CloakBrowser + Playwright. Handles stories, following, and followers lists.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "cloakbrowser": "latest",
+    "playwright-core": "latest",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
