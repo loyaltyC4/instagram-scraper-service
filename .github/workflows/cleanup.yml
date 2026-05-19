@@ -1,0 +1,57 @@
+name: Disk Cleanup
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check and clean disk via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          command_timeout: 10m
+          script: |
+            echo "=== Disk usage ==="
+            df -h /
+
+            echo ""
+            echo "=== Top 10 largest directories ==="
+            du -sh /* 2>/dev/null | sort -rh | head -10
+
+            echo ""
+            echo "=== Ollama check ==="
+            du -sh /root/.ollama 2>/dev/null || echo "No Ollama data found"
+            du -sh /usr/share/ollama 2>/dev/null || echo "No /usr/share/ollama"
+
+            echo ""
+            echo "=== Docker disk usage ==="
+            docker system df 2>/dev/null || echo "Docker not installed"
+
+            echo ""
+            echo "=== Large files in /var ==="
+            du -sh /var/* 2>/dev/null | sort -rh | head -5
+
+            echo ""
+            echo "=== Cleaning Ollama models if present ==="
+            if [ -d /root/.ollama/models ]; then
+              echo "Found Ollama models, removing..."
+              rm -rf /root/.ollama/models
+              echo "Removed Ollama models"
+            fi
+            if [ -d /usr/share/ollama ]; then
+              rm -rf /usr/share/ollama
+              echo "Removed /usr/share/ollama"
+            fi
+
+            echo ""
+            echo "=== Cleaning apt cache ==="
+            apt-get clean -y 2>/dev/null
+
+            echo ""
+            echo "=== Disk after cleanup ==="
+            df -h /
