@@ -7,8 +7,10 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install
 
-# Install CloakBrowser Chromium
-RUN npx cloakbrowser install
+# Install CloakBrowser Chromium — kill background auto-updater and wipe download cache
+RUN npx cloakbrowser install && \
+    pkill -f cloakbrowser 2>/dev/null || true && \
+    rm -rf /root/.cloakbrowser/*.tar.gz /root/.cloakbrowser/updates /tmp/* 2>/dev/null || true
 
 # Copy source
 COPY src/ ./src/
