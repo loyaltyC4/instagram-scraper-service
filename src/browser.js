@@ -5,7 +5,7 @@
  * Re-uses it for all scraping requests to avoid repeated logins.
  */
 
-import { launchPersistentContext } from 'cloakbrowser';
+import { launch } from 'cloakbrowser';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -16,21 +16,28 @@ const INSTAGRAM_SESSION = path.join(SESSION_DIR, 'instagram');
 
 // Ensure session dir exists
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
+if (!fs.existsSync(INSTAGRAM_SESSION)) fs.mkdirSync(INSTAGRAM_SESSION, { recursive: true });
 
+let _browser = null;
 let _context = null;
 
 export async function getBrowserContext() {
   if (_context) return _context;
 
-  console.log('[browser] Launching CloakBrowser persistent context...');
-  console.log('[browser] Session path:', INSTAGRAM_SESSION);
+  console.log('[browser] Launching CloakBrowser...');
+  console.log('[browser] User data dir:', INSTAGRAM_SESSION);
 
-  _context = await launchPersistentContext(INSTAGRAM_SESSION, {
+  // CloakBrowser uses launch() with userDataDir for persistent sessions
+  _browser = await launch({
     headless: true,
+    userDataDir: INSTAGRAM_SESSION,
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  });
+
+  // Get the default context (persistent with userDataDir)
+  const contexts = _browser.contexts();
+  _context = contexts[0] || await _browser.newContext({
     viewport: { width: 1280, height: 900 },
-    userAgent:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     locale: 'en-US',
     timezoneId: 'America/New_York',
   });
@@ -40,8 +47,9 @@ export async function getBrowserContext() {
 }
 
 export async function closeBrowser() {
-  if (_context) {
-    await _context.close();
+  if (_browser) {
+    await _browser.close();
+    _browser = null;
     _context = null;
   }
 }
@@ -70,7 +78,7 @@ export async function isLoggedIn() {
 
 /**
  * Log in with username + password.
- * Only called once; session persists via launchPersistentContext.
+ * Only called once; session persists via userDataDir.
  */
 export async function loginInstagram(username, password) {
   const page = await newPage();
