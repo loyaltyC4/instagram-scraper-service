@@ -1,0 +1,48 @@
+name: Rebuild and Restart Container
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull latest code, rebuild image, restart container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          command_timeout: 15m
+          script: |
+            cd /opt/instagram-scraper-service
+
+            echo "=== Pulling latest code ==="
+            git pull origin main
+
+            echo "=== Stopping old container ==="
+            docker stop instagram-scraper 2>/dev/null || true
+            docker rm instagram-scraper 2>/dev/null || true
+
+            echo "=== Rebuilding image ==="
+            docker build -t instagram-scraper . 2>&1
+
+            echo "=== Starting new container ==="
+            docker run -d \
+              --name instagram-scraper \
+              --restart unless-stopped \
+              -p 3001:3001 \
+              -v /opt/instagram-scraper-service/.sessions:/app/.sessions \
+              -e NODE_ENV=production \
+              -e PORT=3001 \
+              -e SCRAPER_SECRET=${{ secrets.SCRAPER_SECRET }} \
+              instagram-scraper
+
+            echo "=== Waiting 10s for startup ==="
+            sleep 10
+
+            echo "=== Health check ==="
+            curl -s http://localhost:3001/health --max-time 10 && echo 'HEALTHY' || echo 'HEALTH CHECK FAILED'
+
+            echo "=== Container logs ==="
+            docker logs instagram-scraper --tail 20 2>&1

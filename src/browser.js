@@ -5,7 +5,7 @@
  * Re-uses it for all scraping requests to avoid repeated logins.
  */
 
-import { chromium } from 'cloakbrowser';
+import { launchPersistentContext } from 'cloakbrowser';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -18,28 +18,20 @@ const INSTAGRAM_SESSION = path.join(SESSION_DIR, 'instagram');
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
 
 let _context = null;
-let _browser = null;
 
 export async function getBrowserContext() {
   if (_context) return _context;
 
   console.log('[browser] Launching CloakBrowser...');
-  _browser = await chromium.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
-  });
 
-  // Use persistent context so Instagram session survives restarts
-  _context = await chromium.launchPersistentContext(INSTAGRAM_SESSION, {
+  _context = await launchPersistentContext(INSTAGRAM_SESSION, {
     headless: true,
-    humanize: true,        // CloakBrowser behavioral bypass
-    geoip: true,           // Match locale/TZ to proxy IP
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
     viewport: { width: 1280, height: 900 },
     userAgent:
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     locale: 'en-US',
-    timezoneId: 'America/New_York',
+    timezone: 'America/New_York',
   });
 
   console.log('[browser] Context ready. Session stored at:', INSTAGRAM_SESSION);
@@ -48,7 +40,6 @@ export async function getBrowserContext() {
 
 export async function closeBrowser() {
   if (_context) { await _context.close(); _context = null; }
-  if (_browser) { await _browser.close(); _browser = null; }
 }
 
 export async function newPage() {
