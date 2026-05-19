@@ -18,19 +18,29 @@ jobs:
           script: |
             set -e
 
-            # Add SSH key for future keyless access
+            # Add deploy SSH key for future keyless access
             mkdir -p ~/.ssh
             KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZUmgl3/FKZ4L0SkImKAZYUf3k2cwOLfPgw3SqtChTE hyperagent-deploy"
             grep -qF "$KEY" ~/.ssh/authorized_keys 2>/dev/null || echo "$KEY" >> ~/.ssh/authorized_keys
             chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
 
-            # Install Docker if missing
-            if ! command -v docker &> /dev/null; then
-              echo "Installing Docker..."
-              curl -fsSL https://get.docker.com | sh
-              systemctl enable --now docker
+            echo "=== Disk before ==="
+            df -h /
+
+            # Install Node.js 18 if missing
+            if ! command -v node &> /dev/null; then
+              echo "Installing Node.js 18..."
+              curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+              apt-get install -y nodejs
             fi
-            echo "Docker: $(docker --version)"
+            echo "Node: $(node --version)"
+
+            # Install PM2 if missing
+            if ! command -v pm2 &> /dev/null; then
+              echo "Installing PM2..."
+              npm install -g pm2
+            fi
+            echo "PM2: $(pm2 --version)"
 
             # Clone or update repo
             if [ -d /opt/instagram-scraper-service ]; then
@@ -44,20 +54,50 @@ jobs:
 
             cd /opt/instagram-scraper-service
 
-            # Build image
-            echo "Building Docker image..."
-            docker build -t instagram-scraper .
+            # Install npm deps
+            echo "Installing npm packages..."
+            npm install --omit=dev
 
-            # Stop old container if running
-            docker stop instagram-scraper 2>/dev/null || true
-            docker rm instagram-scraper 2>/dev/null || true
+            # Install CloakBrowser (skip if already installed)
+            if [ ! -f node_modules/.bin/cloakbrowser ] && [ ! -d /root/.cloakbrowser/chromium ]; then
+              echo "Installing CloakBrowser..."
+              npx cloakbrowser install
+              # Kill background auto-updater to prevent disk fill
+              pkill -f cloakbrowser 2>/dev/null || true
+              rm -rf /root/.cloakbrowser/*.tar.gz /root/.cloakbrowser/updates /tmp/cloakbrowser* 2>/dev/null || true
+            else
+              echo "CloakBrowser already installed, skipping."
+            fi
 
-            # Run container
-            mkdir -p /opt/instagram-scraper-service/.sessions
-            docker run -d               --name instagram-scraper               --restart always               -p 3001:3001               -e SCRAPER_SECRET=ScR4p3rS3cr3t2024               -v /opt/instagram-scraper-service/.sessions:/app/.sessions               instagram-scraper
+            # Create sessions directory
+            mkdir -p /opt/instagram-scraper-service/.sessions/instagram
+
+            # Set env vars and start/restart with PM2
+            export SCRAPER_SECRET=ScR4p3rS3cr3t2024
+            export PORT=3001
+            export NODE_ENV=production
+
+            pm2 describe instagram-scraper > /dev/null 2>&1 && \
+              pm2 restart instagram-scraper --update-env || \
+              pm2 start src/server.js \
+                --name instagram-scraper \
+                --restart-delay=3000 \
+                --max-restarts=10 \
+                -- 
+
+            # Save PM2 config so it restarts on reboot
+            pm2 save
+            pm2 startup systemd -u root --hp /root 2>/dev/null | tail -1 | bash 2>/dev/null || true
 
             sleep 3
-            echo "Health check:"
-            curl -s http://localhost:3001/health
+            echo ""
+            echo "=== Health check ==="
+            curl -s http://localhost:3001/health || echo 'Health check failed'
+            echo ""
+            echo "=== PM2 status ==="
+            pm2 list
+            echo ""
+            echo "=== Disk after ==="
+            df -h /
             echo ""
             echo "Deploy complete!"
