@@ -1,0 +1,63 @@
+name: Deploy to Hetzner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          command_timeout: 20m
+          script: |
+            set -e
+
+            # Add SSH key for future keyless access
+            mkdir -p ~/.ssh
+            KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZUmgl3/FKZ4L0SkImKAZYUf3k2cwOLfPgw3SqtChTE hyperagent-deploy"
+            grep -qF "$KEY" ~/.ssh/authorized_keys 2>/dev/null || echo "$KEY" >> ~/.ssh/authorized_keys
+            chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
+
+            # Install Docker if missing
+            if ! command -v docker &> /dev/null; then
+              echo "Installing Docker..."
+              curl -fsSL https://get.docker.com | sh
+              systemctl enable --now docker
+            fi
+            echo "Docker: $(docker --version)"
+
+            # Clone or update repo
+            if [ -d /opt/instagram-scraper-service ]; then
+              echo "Updating repo..."
+              cd /opt/instagram-scraper-service && git pull
+            else
+              echo "Cloning repo..."
+              git clone https://github.com/loyaltyC4/instagram-scraper-service.git /opt/instagram-scraper-service
+              cd /opt/instagram-scraper-service
+            fi
+
+            cd /opt/instagram-scraper-service
+
+            # Build image
+            echo "Building Docker image..."
+            docker build -t instagram-scraper .
+
+            # Stop old container if running
+            docker stop instagram-scraper 2>/dev/null || true
+            docker rm instagram-scraper 2>/dev/null || true
+
+            # Run container
+            mkdir -p /opt/instagram-scraper-service/.sessions
+            docker run -d               --name instagram-scraper               --restart always               -p 3001:3001               -e SCRAPER_SECRET=ScR4p3rS3cr3t2024               -v /opt/instagram-scraper-service/.sessions:/app/.sessions               instagram-scraper
+
+            sleep 3
+            echo "Health check:"
+            curl -s http://localhost:3001/health
+            echo ""
+            echo "Deploy complete!"
