@@ -1,0 +1,58 @@
+name: Read AppVetter Source Files
+
+on:
+  workflow_dispatch:
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read key source files
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          command_timeout: 5m
+          script: |
+            echo "=== APPVETTER SRC FULL STRUCTURE ==="
+            find /var/www/appvetter/src -type f 2>/dev/null
+
+            echo "=== APPVETTER-BLOG SRC STRUCTURE ==="
+            find /var/www/appvetter-blog/src -type f 2>/dev/null | head -80
+
+            echo "=== APPVETTER-STATIC STRUCTURE ==="
+            find /var/www/appvetter-static -maxdepth 4 -type f 2>/dev/null | head -50
+
+            echo "=== APPVETTER PACKAGE.JSON ==="
+            cat /var/www/appvetter/package.json 2>/dev/null
+
+            echo "=== APPVETTER-BLOG PACKAGE.JSON ==="
+            cat /var/www/appvetter-blog/package.json 2>/dev/null
+
+            echo "=== APP.TSX ==="
+            cat /var/www/appvetter/src/App.tsx 2>/dev/null
+
+            echo "=== INDEX.HTML ==="
+            cat /var/www/appvetter/index.html 2>/dev/null
+
+            echo "=== NGINX APPVETTER CONFIG ==="
+            cat /etc/nginx/sites-available/appvetter 2>/dev/null
+
+            echo "=== DIST FOLDER ==="
+            ls -la /var/www/appvetter/dist/ 2>/dev/null || echo 'no dist'
+            ls -la /var/www/appvetter-blog/dist/ 2>/dev/null || echo 'no appvetter-blog dist'
+
+            echo "=== APPVETTER-BLOG SRC FILES SAMPLE ==="
+            ls /var/www/appvetter-blog/src/ 2>/dev/null
+
+            echo "=== LOOK FOR DATA/APPS JSON ==="
+            find /var/www/appvetter -name '*.json' -not -path '*/node_modules/*' 2>/dev/null
+            find /var/www/appvetter-blog -name '*.json' -not -path '*/node_modules/*' 2>/dev/null | head -20
+            find /var/www/appvetter-blog -name '*.ts' -not -path '*/node_modules/*' 2>/dev/null | head -30
+            find /var/www/appvetter-blog -name '*.tsx' -not -path '*/node_modules/*' 2>/dev/null | head -30
+
+            echo "=== IMAGES IN APPVETTER ==="
+            find /var/www/appvetter -name '*.png' -o -name '*.jpg' -o -name '*.svg' -o -name '*.webp' 2>/dev/null | grep -v node_modules
+            find /var/www/appvetter-blog -name '*.png' -o -name '*.jpg' -o -name '*.svg' -o -name '*.webp' 2>/dev/null | grep -v node_modules | head -30
