@@ -15,89 +15,68 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: 22
           command_timeout: 20m
+          script_stop: true
           script: |
-            set -e
-
-            # Add deploy SSH key for future keyless access
+            echo "=== Step 1: SSH key ===" 
             mkdir -p ~/.ssh
             KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZUmgl3/FKZ4L0SkImKAZYUf3k2cwOLfPgw3SqtChTE hyperagent-deploy"
             grep -qF "$KEY" ~/.ssh/authorized_keys 2>/dev/null || echo "$KEY" >> ~/.ssh/authorized_keys
             chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
+            echo "Key OK"
 
-            echo "=== Disk before ==="
+            echo "=== Step 2: Disk ==="
             df -h /
 
-            # Install Node.js 18 if missing
-            if ! command -v node &> /dev/null; then
+            echo "=== Step 3: Node.js ==="
+            if ! command -v node > /dev/null 2>&1; then
               echo "Installing Node.js 18..."
-              curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+              curl -fsSL https://deb.nodesource.com/setup_18.x -o /tmp/nodesource_setup.sh
+              bash /tmp/nodesource_setup.sh
               apt-get install -y nodejs
             fi
             echo "Node: $(node --version)"
 
-            # Install PM2 if missing
-            if ! command -v pm2 &> /dev/null; then
-              echo "Installing PM2..."
-              npm install -g pm2
-            fi
+            echo "=== Step 4: PM2 ==="
+            command -v pm2 > /dev/null 2>&1 || npm install -g pm2
             echo "PM2: $(pm2 --version)"
 
-            # Clone or update repo
+            echo "=== Step 5: Repo ==="
             if [ -d /opt/instagram-scraper-service ]; then
-              echo "Updating repo..."
-              cd /opt/instagram-scraper-service && git pull
+              cd /opt/instagram-scraper-service
+              git pull
             else
-              echo "Cloning repo..."
               git clone https://github.com/loyaltyC4/instagram-scraper-service.git /opt/instagram-scraper-service
               cd /opt/instagram-scraper-service
             fi
 
+            echo "=== Step 6: Dependencies ==="
             cd /opt/instagram-scraper-service
-
-            # Install npm deps
-            echo "Installing npm packages..."
             npm install --omit=dev
 
-            # Install CloakBrowser (skip if already installed)
-            if [ ! -f node_modules/.bin/cloakbrowser ] && [ ! -d /root/.cloakbrowser/chromium ]; then
+            echo "=== Step 7: CloakBrowser ==="
+            CLOAKBROWSER_INSTALLED=false
+            ls node_modules/cloakbrowser/bin/ > /dev/null 2>&1 && CLOAKBROWSER_INSTALLED=true
+            ls /root/.cloakbrowser/chromium/ > /dev/null 2>&1 && CLOAKBROWSER_INSTALLED=true
+            if [ "$CLOAKBROWSER_INSTALLED" = "false" ]; then
               echo "Installing CloakBrowser..."
               npx cloakbrowser install
-              # Kill background auto-updater to prevent disk fill
-              pkill -f cloakbrowser 2>/dev/null || true
-              rm -rf /root/.cloakbrowser/*.tar.gz /root/.cloakbrowser/updates /tmp/cloakbrowser* 2>/dev/null || true
+              pkill -f "cloakbrowser.*update" 2>/dev/null || true
+              rm -rf /root/.cloakbrowser/*.tar.gz /tmp/cloakbrowser* 2>/dev/null || true
+              echo "CloakBrowser installed"
             else
-              echo "CloakBrowser already installed, skipping."
+              echo "CloakBrowser already installed, skipping"
             fi
 
-            # Create sessions directory
+            echo "=== Step 8: Start service ==="
             mkdir -p /opt/instagram-scraper-service/.sessions/instagram
-
-            # Set env vars and start/restart with PM2
-            export SCRAPER_SECRET=ScR4p3rS3cr3t2024
-            export PORT=3001
-            export NODE_ENV=production
-
-            pm2 describe instagram-scraper > /dev/null 2>&1 && \
-              pm2 restart instagram-scraper --update-env || \
-              pm2 start src/server.js \
-                --name instagram-scraper \
-                --restart-delay=3000 \
-                --max-restarts=10 \
-                -- 
-
-            # Save PM2 config so it restarts on reboot
+            cd /opt/instagram-scraper-service
+            pm2 startOrRestart ecosystem.config.cjs --env production
             pm2 save
-            pm2 startup systemd -u root --hp /root 2>/dev/null | tail -1 | bash 2>/dev/null || true
+            echo "Service started"
 
+            echo "=== Step 9: Health check ==="
             sleep 3
-            echo ""
-            echo "=== Health check ==="
-            curl -s http://localhost:3001/health || echo 'Health check failed'
-            echo ""
-            echo "=== PM2 status ==="
-            pm2 list
-            echo ""
-            echo "=== Disk after ==="
+            curl -sf http://localhost:3001/health && echo "Health OK" || echo "Health check failed (may still be starting)"
+
+            echo "=== Done ==="
             df -h /
-            echo ""
-            echo "Deploy complete!"
