@@ -1,0 +1,49 @@
+name: Explore AppVetter Site
+
+on:
+  workflow_dispatch:
+
+jobs:
+  explore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explore AppVetter site structure
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          command_timeout: 5m
+          script: |
+            echo "=== FIND APPVETTER FILES ==="
+            echo "--- /var/www ---"
+            ls /var/www/ 2>/dev/null || echo 'no /var/www'
+            echo "--- /home ---"
+            ls /home/ 2>/dev/null || echo 'no /home'
+            echo "--- /opt ---"
+            ls /opt/ 2>/dev/null || echo 'no /opt'
+            echo "--- searching for appvetter ---"
+            find / -maxdepth 5 -name '*appvetter*' -not -path '*/proc/*' 2>/dev/null || echo 'not found at depth 5'
+            find / -maxdepth 6 -type d -name 'appvetter' -not -path '*/proc/*' 2>/dev/null || echo 'dir not found'
+
+            echo "=== NGINX CONFIG ==="
+            ls /etc/nginx/sites-enabled/ 2>/dev/null || echo 'no nginx sites-enabled'
+            ls /etc/nginx/sites-available/ 2>/dev/null || echo 'no nginx sites-available'
+            ls /etc/nginx/conf.d/ 2>/dev/null || echo 'no nginx conf.d'
+            cat /etc/nginx/sites-enabled/* 2>/dev/null | head -100 || echo 'cannot read nginx config'
+
+            echo "=== APACHE CONFIG ==="
+            ls /etc/apache2/sites-enabled/ 2>/dev/null || echo 'no apache'
+
+            echo "=== RUNNING WEB SERVERS ==="
+            ps aux | grep -E '(nginx|apache|caddy|node|python|php)' | grep -v grep
+
+            echo "=== PORTS LISTENING ==="
+            ss -tlnp | grep -E '(:80|:443|:8080|:3000|:4000|:5000)'
+
+            echo "=== DOCKER CONTAINERS ==="
+            docker ps -a 2>/dev/null || echo 'no docker'
+
+            echo "=== /var/www FULL LISTING ==="
+            find /var/www -maxdepth 4 -not -path '*/proc/*' 2>/dev/null | head -100
