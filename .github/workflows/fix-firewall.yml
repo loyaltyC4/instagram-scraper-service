@@ -1,0 +1,34 @@
+name: Fix Firewall + Check Port 3001
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check firewall and open port 3001
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            echo "=== UFW Status ==="
+            ufw status verbose 2>&1 || echo 'UFW not active'
+
+            echo "=== iptables port 3001 rules ==="
+            iptables -L INPUT -n | grep 3001 || echo 'No iptables rules for 3001'
+
+            echo "=== Container status ==="
+            docker ps | grep instagram || echo 'Container not running!'
+
+            echo "=== Open port 3001 in UFW (if active) ==="
+            ufw allow 3001/tcp 2>&1 || true
+            ufw allow 3001 2>&1 || true
+
+            echo "=== Local health check ==="
+            curl -s http://localhost:3001/health --max-time 10 || echo 'Local health check failed'
+
+            echo "=== UFW status after ==="
+            ufw status 2>&1 || true
