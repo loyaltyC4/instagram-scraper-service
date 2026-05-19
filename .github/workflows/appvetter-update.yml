@@ -1,0 +1,22 @@
+name: AppVetter Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Command to run'
+        required: true
+        default: 'ls -la /var/www/appvetter-blog/src/'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run command on Hetzner
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            ${{ github.event.inputs.command }}
