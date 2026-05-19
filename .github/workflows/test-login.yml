@@ -1,0 +1,52 @@
+name: Test Login + Smoke Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instagram login
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            echo "=== Instagram Login ==="
+            RESULT=$(curl -s -X POST http://localhost:3001/login \
+              -H "Content-Type: application/json" \
+              -H "X-Secret: ${{ secrets.SCRAPER_SECRET }}" \
+              -d '{"username":"lumina.haus.co","password":"selenium3"}' \
+              --max-time 120)
+            echo "Login response: $RESULT"
+            echo "$RESULT" | grep -q '"ok":true' && echo 'LOGIN SUCCESS' || echo 'LOGIN FAILED'
+
+      - name: Smoke test - fetch followers
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            echo "=== Smoke Test: followers ==="
+            RESULT=$(curl -s -X POST http://localhost:3001/scrape \
+              -H "Content-Type: application/json" \
+              -H "X-Secret: ${{ secrets.SCRAPER_SECRET }}" \
+              -d '{"action":"followers","payload":{"username":"lumina.haus.co","limit":5}}' \
+              --max-time 120)
+            echo "Scrape response: $RESULT"
+            echo "$RESULT" | grep -q '"ok":true' && echo 'SMOKE TEST PASSED' || echo 'SMOKE TEST FAILED'
+
+      - name: Container health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            echo "=== Container status ==="
+            docker ps | grep instagram
+            echo "=== Last 20 container logs ==="
+            docker logs $(docker ps -q --filter name=instagram) --tail 20 2>&1 || true
