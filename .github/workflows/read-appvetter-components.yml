@@ -1,0 +1,44 @@
+name: Read AppVetter Blog Components
+
+on:
+  workflow_dispatch:
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read component files
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          command_timeout: 5m
+          script: |
+            echo "=== AppDirectory.tsx ==="
+            cat /var/www/appvetter-blog/src/app/components/AppDirectory.tsx 2>/dev/null
+
+            echo "=== AppLogo.tsx ==="
+            cat /var/www/appvetter-blog/src/app/components/AppLogo.tsx 2>/dev/null
+
+            echo "=== Home.tsx ==="
+            cat /var/www/appvetter-blog/src/app/components/Home.tsx 2>/dev/null
+
+            echo "=== BlogList.tsx ==="
+            cat /var/www/appvetter-blog/src/app/components/BlogList.tsx 2>/dev/null
+
+            echo "=== BlogPost.tsx ==="
+            cat /var/www/appvetter-blog/src/app/components/BlogPost.tsx 2>/dev/null
+
+            echo "=== routes.tsx ==="
+            cat /var/www/appvetter-blog/src/app/routes.tsx 2>/dev/null
+
+            echo "=== supabase.ts ==="
+            cat /var/www/appvetter-blog/src/lib/supabase.ts 2>/dev/null
+
+            echo "=== MyProducts.tsx ==="
+            cat /var/www/appvetter-blog/src/app/components/MyProducts.tsx 2>/dev/null
+
+            echo "=== DIST ASSETS ==="
+            ls /var/www/appvetter-blog/dist/assets/ 2>/dev/null | head -20
