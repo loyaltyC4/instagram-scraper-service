@@ -1,0 +1,26 @@
+name: Quick Diagnostic
+on:
+  workflow_dispatch:
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check logs and test locally
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            echo "=== Container logs (last 30) ==="
+            docker logs instagram-scraper --tail 30 2>&1
+
+            echo "=== Test /health ==="
+            curl -s http://localhost:3001/health
+
+            echo "=== Test /scrape locally ==="
+            curl -s -X POST http://localhost:3001/scrape \
+              -H "Content-Type: application/json" \
+              -H "X-Secret: ${{ secrets.SCRAPER_SECRET }}" \
+              -d '{"action":"followers","payload":{"username":"lumina.haus.co","limit":1}}' \
+              --max-time 60 2>&1 | head -100
