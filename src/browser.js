@@ -22,7 +22,8 @@ let _context = null;
 export async function getBrowserContext() {
   if (_context) return _context;
 
-  console.log('[browser] Launching CloakBrowser...');
+  console.log('[browser] Launching CloakBrowser persistent context...');
+  console.log('[browser] Session path:', INSTAGRAM_SESSION);
 
   _context = await launchPersistentContext(INSTAGRAM_SESSION, {
     headless: true,
@@ -31,15 +32,18 @@ export async function getBrowserContext() {
     userAgent:
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     locale: 'en-US',
-    timezone: 'America/New_York',
+    timezoneId: 'America/New_York',
   });
 
-  console.log('[browser] Context ready. Session stored at:', INSTAGRAM_SESSION);
+  console.log('[browser] Context ready.');
   return _context;
 }
 
 export async function closeBrowser() {
-  if (_context) { await _context.close(); _context = null; }
+  if (_context) {
+    await _context.close();
+    _context = null;
+  }
 }
 
 export async function newPage() {
