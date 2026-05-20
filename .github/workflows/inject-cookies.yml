@@ -1,0 +1,44 @@
+name: Inject Instagram Cookies
+
+on:
+  workflow_dispatch:
+    inputs:
+      sessionid:
+        description: 'Instagram sessionid cookie value'
+        required: true
+      csrftoken:
+        description: 'Instagram csrftoken cookie value'
+        required: true
+      ds_user_id:
+        description: 'Instagram ds_user_id cookie value'
+        required: true
+
+jobs:
+  inject:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inject cookies into running container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            SECRET=$(docker exec instagram-scraper printenv SCRAPER_SECRET)
+            python3 -c "
+            import json
+            data = {
+              'sessionid': '${{ github.event.inputs.sessionid }}',
+              'csrftoken': '${{ github.event.inputs.csrftoken }}',
+              'ds_user_id': '${{ github.event.inputs.ds_user_id }}'
+            }
+            print(json.dumps(data))
+            " > /tmp/cookies.json
+            echo "Injecting cookies..."
+            curl -s -X POST http://localhost:3001/inject-cookies \
+              -H "X-Secret: $SECRET" \
+              -H "Content-Type: application/json" \
+              -d @/tmp/cookies.json
+            echo ""
+            echo "Checking login status..."
+            curl -s -H "X-Secret: $SECRET" http://localhost:3001/status
