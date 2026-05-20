@@ -1,0 +1,80 @@
+name: Admin Scraper
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Command to run (status, inject-cookies, restart, logs)'
+        required: true
+        default: 'status'
+        type: choice
+        options:
+          - status
+          - inject-cookies
+          - restart
+          - logs
+      sessionid:
+        description: 'Instagram sessionid cookie (for inject-cookies only)'
+        required: false
+      csrftoken:
+        description: 'Instagram csrftoken cookie (optional)'
+        required: false
+      ds_user_id:
+        description: 'Instagram ds_user_id cookie (optional)'
+        required: false
+
+jobs:
+  admin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run admin command
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            SECRET=$(docker exec instagram-scraper printenv SCRAPER_SECRET)
+            COMMAND="${{ github.event.inputs.command }}"
+
+            if [ "$COMMAND" = "status" ]; then
+              echo "=== Health ==="
+              curl -sf http://localhost:3001/health
+              echo ""
+              echo "=== Login Status ==="
+              curl -sf -H "X-Secret: $SECRET" http://localhost:3001/status
+              echo ""
+              echo "=== Docker Status ==="
+              docker ps --filter name=instagram-scraper --format "{{.Status}}"
+              echo "=== Recent Logs ==="
+              docker logs instagram-scraper --tail 30 2>&1
+
+            elif [ "$COMMAND" = "inject-cookies" ]; then
+              SESSIONID="${{ github.event.inputs.sessionid }}"
+              CSRFTOKEN="${{ github.event.inputs.csrftoken }}"
+              DS_USER_ID="${{ github.event.inputs.ds_user_id }}"
+              if [ -z "$SESSIONID" ]; then
+                echo "ERROR: sessionid is required for inject-cookies"
+                exit 1
+              fi
+              JSON="{\"sessionid\":\"$SESSIONID\""
+              if [ -n "$CSRFTOKEN" ]; then JSON="$JSON,\"csrftoken\":\"$CSRFTOKEN\""; fi
+              if [ -n "$DS_USER_ID" ]; then JSON="$JSON,\"ds_user_id\":\"$DS_USER_ID\""; fi
+              JSON="$JSON}"
+              echo "Injecting cookies..."
+              curl -s -X POST -H "Content-Type: application/json" -H "X-Secret: $SECRET"                 -d "$JSON" http://localhost:3001/inject-cookies
+              echo ""
+              echo "=== Verifying login ==="
+              sleep 2
+              curl -sf -H "X-Secret: $SECRET" http://localhost:3001/status
+
+            elif [ "$COMMAND" = "restart" ]; then
+              echo "Restarting scraper container..."
+              docker restart instagram-scraper
+              sleep 5
+              curl -sf http://localhost:3001/health && echo "Health: OK" || echo "Health: FAILED"
+
+            elif [ "$COMMAND" = "logs" ]; then
+              docker logs instagram-scraper --tail 100 2>&1
+            fi
