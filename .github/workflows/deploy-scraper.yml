@@ -15,7 +15,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             set -e
-            cd /app
+            cd /opt/instagram-scraper-service
             git fetch origin
             git reset --hard origin/main
             docker build -t instagram-scraper .
@@ -26,7 +26,7 @@ jobs:
               --restart unless-stopped \
               -p 3001:3001 \
               -e SCRAPER_SECRET=${{ secrets.SCRAPER_SECRET }} \
-              -v /app/.sessions:/app/.sessions \
+              -v /opt/instagram-scraper-service/.sessions:/app/.sessions \
               instagram-scraper
             sleep 5
-            curl -sf http://localhost:3001/health && echo "✅ Health check passed" || echo "❌ Health check failed"
+            curl -sf http://localhost:3001/health && echo "Health check passed" || echo "Health check failed"
