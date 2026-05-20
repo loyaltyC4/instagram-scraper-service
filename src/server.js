@@ -2,17 +2,18 @@
  * server.js — Express REST API for Instagram scraping
  *
  * Endpoints:
- *   POST /scrape        { action, payload }  → items[]
- *   POST /login         { username, password } → { success }
- *   GET  /status        → { loggedIn, sessionPath }
- *   GET  /health        → 200 OK
+ *   POST /scrape           { action, payload }  → items[]
+ *   POST /login            { username, password } → { success }
+ *   POST /inject-cookies   { sessionid, csrftoken?, ds_user_id? } → { ok }
+ *   GET  /status           → { loggedIn, sessionPath }
+ *   GET  /health           → 200 OK
  *
  * Designed to be a drop-in replacement for Apify actors for
  * actions that don't work reliably: stories, following lists, followers.
  */
 
 import express from 'express';
-import { isLoggedIn, loginInstagram } from './browser.js';
+import { isLoggedIn, loginInstagram, getBrowserContext } from './browser.js';
 import { scrapeFollowers, scrapeFollowing, scrapeStories, scrapeProfile } from './scrapers.js';
 
 const app = express();
@@ -51,6 +52,59 @@ app.post('/login', async (req, res) => {
     const result = await loginInstagram(username, password);
     res.json(result);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Cookie Injection ────────────────────────────────────────────────────────
+// Bypasses CAPTCHA: log into Instagram on your personal browser, extract cookies
+// from DevTools (Application → Cookies → https://www.instagram.com), then POST
+// them here. They're injected into the persistent browser context so all
+// subsequent /scrape calls work as an authenticated user.
+//
+// Required:  sessionid
+// Optional:  csrftoken, ds_user_id
+app.post('/inject-cookies', async (req, res) => {
+  const { sessionid, csrftoken, ds_user_id } = req.body || {};
+  if (!sessionid) {
+    return res.status(400).json({ error: 'sessionid is required' });
+  }
+  try {
+    const ctx = await getBrowserContext();
+    const cookies = [
+      {
+        name: 'sessionid',
+        value: sessionid,
+        domain: '.instagram.com',
+        path: '/',
+        httpOnly: true,
+        secure: true,
+        sameSite: 'None',
+      },
+    ];
+    if (csrftoken) {
+      cookies.push({
+        name: 'csrftoken',
+        value: csrftoken,
+        domain: '.instagram.com',
+        path: '/',
+        secure: true,
+        sameSite: 'Lax',
+      });
+    }
+    if (ds_user_id) {
+      cookies.push({
+        name: 'ds_user_id',
+        value: String(ds_user_id),
+        domain: '.instagram.com',
+        path: '/',
+      });
+    }
+    await ctx.addCookies(cookies);
+    console.log(`[inject-cookies] Injected ${cookies.length} cookie(s) into browser context`);
+    res.json({ ok: true, message: 'Cookies injected. Call GET /status to verify login.' });
+  } catch (err) {
+    console.error('[inject-cookies] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
