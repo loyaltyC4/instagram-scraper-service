@@ -1,0 +1,45 @@
+name: Test Scraper
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to test (stories, followers, following, profile)'
+        required: true
+        default: 'stories'
+      username:
+        description: 'Instagram username to test'
+        required: true
+        default: 'natgeo'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test scraper endpoint
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            SECRET=$(docker exec instagram-scraper printenv SCRAPER_SECRET)
+            echo "Testing action=${{ github.event.inputs.action }} username=${{ github.event.inputs.username }}"
+            curl -s -m 60 \
+              -H "X-Secret: $SECRET" \
+              "http://localhost:3001/scrape?action=${{ github.event.inputs.action }}&username=${{ github.event.inputs.username }}" \
+              | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if isinstance(data, list):
+    print(f'Result: {len(data)} items')
+    if len(data) > 0:
+        print('First item:', json.dumps(data[0], indent=2)[:500])
+elif isinstance(data, dict):
+    if 'items' in data:
+        print(f'Result: {len(data[\"items\"])} items')
+    else:
+        print('Result:', json.dumps(data, indent=2)[:1000])
+else:
+    print('Result:', data)
+"
