@@ -10,11 +10,14 @@
  *
  * Designed to be a drop-in replacement for Apify actors for
  * actions that don't work reliably: stories, following lists, followers.
+ *
+ * v2: Added retry with exponential backoff around all scraper calls (Fix #7).
  */
 
 import express from 'express';
 import { isLoggedIn, loginInstagram, getBrowserContext } from './browser.js';
 import { scrapeFollowers, scrapeFollowing, scrapeStories, scrapeProfile } from './scrapers.js';
+import { withRetry } from './utils.js';
 
 const app = express();
 app.use(express.json());
@@ -29,10 +32,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── Health ─────────────────────────────────────────────────────────────────
+// ─── Health ──────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ ok: true }));
 
-// ─── Status ─────────────────────────────────────────────────────────────────
+// ─── Status ──────────────────────────────────────────────────────────────────
 app.get('/status', async (req, res) => {
   try {
     const loggedIn = await isLoggedIn();
@@ -56,14 +59,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// ─── Cookie Injection ────────────────────────────────────────────────────────
-// Bypasses CAPTCHA: log into Instagram on your personal browser, extract cookies
-// from DevTools (Application → Cookies → https://www.instagram.com), then POST
-// them here. They're injected into the persistent browser context so all
-// subsequent /scrape calls work as an authenticated user.
-//
-// Required:  sessionid
-// Optional:  csrftoken, ds_user_id
+// ─── Cookie Injection ─────────────────────────────────────────────────────────
 app.post('/inject-cookies', async (req, res) => {
   const { sessionid, csrftoken, ds_user_id } = req.body || {};
   if (!sessionid) {
@@ -109,7 +105,7 @@ app.post('/inject-cookies', async (req, res) => {
   }
 });
 
-// ─── Main scrape endpoint ────────────────────────────────────────────────────
+// ─── Main scrape endpoint (Fix #7: retry wrapper) ────────────────────────────
 // Matches the same interface as Activity Mint's apify-proxy.js
 // { action: 'followers'|'following'|'stories'|'profile', payload: { username, limit? } }
 app.post('/scrape', async (req, res) => {
@@ -127,16 +123,28 @@ app.post('/scrape', async (req, res) => {
 
     switch (action) {
       case 'followers':
-        items = await scrapeFollowers(clean, limit);
+        items = await withRetry(
+          () => scrapeFollowers(clean, limit),
+          { label: `followers(@${clean})`, maxRetries: 3 }
+        );
         break;
       case 'following':
-        items = await scrapeFollowing(clean, limit);
+        items = await withRetry(
+          () => scrapeFollowing(clean, limit),
+          { label: `following(@${clean})`, maxRetries: 3 }
+        );
         break;
       case 'stories':
-        items = await scrapeStories(clean);
+        items = await withRetry(
+          () => scrapeStories(clean),
+          { label: `stories(@${clean})`, maxRetries: 3 }
+        );
         break;
       case 'profile':
-        items = [await scrapeProfile(clean)];
+        items = [await withRetry(
+          () => scrapeProfile(clean),
+          { label: `profile(@${clean})`, maxRetries: 3 }
+        )];
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
@@ -145,7 +153,7 @@ app.post('/scrape', async (req, res) => {
     console.log(`[scrape] Returned ${items.length} items for @${clean}`);
     res.json({ ok: true, items });
   } catch (err) {
-    console.error(`[scrape] Error:`, err.message);
+    console.error(`[scrape] Error (after retries):`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
