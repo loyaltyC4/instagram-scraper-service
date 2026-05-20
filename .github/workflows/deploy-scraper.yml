@@ -1,0 +1,32 @@
+name: Deploy Scraper
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy instagram-scraper to Hetzner
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: root
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            cd /app
+            git fetch origin
+            git reset --hard origin/main
+            docker build -t instagram-scraper .
+            docker stop instagram-scraper 2>/dev/null || true
+            docker rm instagram-scraper 2>/dev/null || true
+            docker run -d \
+              --name instagram-scraper \
+              --restart unless-stopped \
+              -p 3001:3001 \
+              -e SCRAPER_SECRET=${{ secrets.SCRAPER_SECRET }} \
+              -v /app/.sessions:/app/.sessions \
+              instagram-scraper
+            sleep 5
+            curl -sf http://localhost:3001/health && echo "✅ Health check passed" || echo "❌ Health check failed"
