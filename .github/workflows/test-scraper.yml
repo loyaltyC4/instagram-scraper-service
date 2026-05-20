@@ -25,33 +25,22 @@ jobs:
           script: |
             SECRET=$(docker exec instagram-scraper printenv SCRAPER_SECRET)
             echo "Testing action=${{ github.event.inputs.action }} username=${{ github.event.inputs.username }}"
-            curl -s -m 120 \
-              -X POST \
-              -H "Content-Type: application/json" \
-              -H "X-Secret: $SECRET" \
-              -d '{"action":"${{ github.event.inputs.action }}","payload":{"username":"${{ github.event.inputs.username }}"}}' \
-              "http://localhost:3001/scrape" \
-              | python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    if isinstance(data, dict):
-        if 'error' in data:
-            print(f'Error: {data["error"]}')
-        elif 'items' in data:
-            items = data['items']
-            print(f'Success: {len(items)} items')
-            if len(items) > 0:
-                print('First item:', json.dumps(items[0], indent=2)[:800])
-        else:
-            print('Response:', json.dumps(data, indent=2)[:1000])
-    elif isinstance(data, list):
-        print(f'Result: {len(data)} items')
-        if len(data) > 0:
-            print('First item:', json.dumps(data[0], indent=2)[:800])
-    else:
-        print('Result:', data)
-except Exception as e:
-    print(f'Parse error: {e}')
-    print('Raw:', sys.stdin.read()[:500])
-"
+            RESULT=$(curl -s -m 120 -X POST -H "Content-Type: application/json" -H "X-Secret: $SECRET" -d "{\"action\":\"${{ github.event.inputs.action }}\",\"payload\":{\"username\":\"${{ github.event.inputs.username }}\"}}" "http://localhost:3001/scrape")
+            echo "$RESULT" | python3 -c "
+            import json, sys
+            try:
+                data = json.load(sys.stdin)
+                if isinstance(data, dict):
+                    if 'error' in data:
+                        print('ERROR:', data['error'])
+                    elif 'items' in data:
+                        print('SUCCESS:', len(data['items']), 'items')
+                        if data['items']:
+                            print('First:', json.dumps(data['items'][0], indent=2)[:800])
+                    else:
+                        print('Response:', json.dumps(data, indent=2)[:1000])
+                else:
+                    print('Result:', str(data)[:500])
+            except Exception as e:
+                print('Parse error:', e)
+            "
